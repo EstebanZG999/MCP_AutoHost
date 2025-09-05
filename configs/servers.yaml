@@ -1,0 +1,10 @@
+servers:
+  filesystem:
+    command: "npx"
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "${workspace}"]
+    env: {}
+  git:
+    command: "npx"
+    args: ["-y", "@cyanheads/git-mcp-server"]
+    env:
+      MCP_LOG_LEVEL: "info"
