@@ -81,6 +81,3 @@ MCP_AutoHost/
 
 ## Notes
 - If both keys are present and `LLM_PROVIDER` is unset, **Anthropic** is preferred by default.
-- On Windows native, install **Npcap** if you plan to capture `localhost` traffic with Wireshark later.
-- This README covers Milestone 1. In Milestone 2 we will integrate **Filesystem/Git MCP** and start logging
-  `mcp_request/mcp_response` in the same file.
