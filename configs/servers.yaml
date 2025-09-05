@@ -8,3 +8,7 @@ servers:
     args: ["-y", "@cyanheads/git-mcp-server"]
     env:
       MCP_LOG_LEVEL: "info"
+  auto_advisor:
+    command: "/home/esteb/4to/segundo/redes/MCP_AutoAdvisor_Server/.venv/bin/python"
+    args: ["/home/esteb/4to/segundo/redes/MCP_AutoAdvisor_Server/server.py"]
+    env: {}
