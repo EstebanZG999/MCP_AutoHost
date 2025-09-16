@@ -12,3 +12,16 @@ servers:
     command: "/home/esteb/4to/segundo/redes/MCP_AutoAdvisor_Server/.venv/bin/python"
     args: ["/home/esteb/4to/segundo/redes/MCP_AutoAdvisor_Server/server.py"]
     env: {}
+  pokevgc:
+    command: "${POKEVGC_PY}"
+    args: ["-u", "-m", "server.main"]
+    cwd: "${POKEVGC_PATH}"
+    env:
+      PYTHONPATH: "${POKEVGC_PATH}"
+      PYTHONUNBUFFERED: "1"
+  chatbot_server:
+    command: "${CHATBOT_SERVER_PY}"
+    args: ["server.py", "stdio"]
+    cwd: "${CHATBOT_SERVER_PATH}"
+    env:
+      PYTHONUNBUFFERED: "1"
