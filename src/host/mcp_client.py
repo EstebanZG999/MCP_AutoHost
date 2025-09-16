@@ -18,6 +18,21 @@ class MCPServerConfig:
     command: str
     args: list[str]
     env: dict[str, str]
+    cwd: Optional[str] = None
+
+def _expand(val: Any, workspace: str) -> Any:
+    """Expands ${VARS}, ~ and ${workspace} in str / list / dict."""
+    if isinstance(val, str):
+        # first ${workspace}, then system variables and ~
+        val = val.replace("${workspace}", workspace)
+        val = os.path.expandvars(val)
+        val = os.path.expanduser(val)
+        return val
+    if isinstance(val, list):
+        return [_expand(v, workspace) for v in val]
+    if isinstance(val, dict):
+        return {k: _expand(v, workspace) for k, v in val.items()}
+    return val
 
 class MCPManager:
     """Manages multiple MCP server connections via stdio."""
@@ -32,17 +47,16 @@ class MCPManager:
         self.workspace = workspace or os.getcwd()
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-        cfgs = {}
-        for name, cfg in (data.get("servers") or {}).items():
-            args = []
-            for a in cfg.get("args", []):
-                a = a.replace("${workspace}", self.workspace)
-                args.append(a)
-            cfgs[name] = MCPServerConfig(
-                command=cfg.get("command", "npx"),
-                args=args,
-                env=cfg.get("env", {}) or {}
-            )
+        raw_servers = (data.get("servers") or {})
+
+        cfgs: dict[str, MCPServerConfig] = {}
+        for name, cfg in raw_servers.items():
+            # expand everything: command, args, env, cwd
+            command = _expand(cfg.get("command", "npx"), self.workspace)
+            args    = _expand(cfg.get("args", []), self.workspace)
+            env     = _expand(cfg.get("env", {}) or {}, self.workspace)
+            cwd     = _expand(cfg.get("cwd", None), self.workspace)
+            cfgs[name] = MCPServerConfig(command=command, args=args, env=env, cwd=cwd)
         self.configs = cfgs
 
     async def connect(self, name: str):
@@ -52,15 +66,24 @@ class MCPManager:
             raise RuntimeError(f"Unknown server '{name}'. Did you configure configs/servers.yaml?")
 
         cfg = self.configs[name]
-        server_params = StdioServerParameters(command=cfg.command, args=cfg.args, env=cfg.env)
-        log_event("mcp_request", server=name, op="connect", command=cfg.command, args=cfg.args)
+        # Merge system env + server env (server env has priority)
+        merged_env = dict(os.environ)
+        merged_env.update(cfg.env or {})
+
+        server_params = StdioServerParameters(
+            command=cfg.command,
+            args=cfg.args,
+            env=merged_env,
+            cwd=cfg.cwd  # <- now we support cwd
+        )
+        log_event("mcp_request", server=name, op="connect",
+                  command=cfg.command, args=cfg.args, cwd=cfg.cwd)
 
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
         reader, writer = stdio_transport
         session = await self.exit_stack.enter_async_context(ClientSession(reader, writer))
         await session.initialize()
 
-        # Optional: list tools once to confirm
         tools = (await session.list_tools()).tools
         log_event("mcp_response", server=name, op="connect", tools=[t.name for t in tools])
         self.sessions[name] = session
@@ -75,7 +98,6 @@ class MCPManager:
         session = await self.connect(name)
         log_event("mcp_request", server=name, op="tools.call", tool=tool, input=args)
         result = await session.call_tool(tool, args)
-        # result.content is a list of structured parts; stringify for log and return
         payload = {"content": [c.to_dict() if hasattr(c, "to_dict") else getattr(c, "__dict__", str(c)) for c in result.content]}
         log_event("mcp_response", server=name, op="tools.call", tool=tool, output=payload)
         return payload
