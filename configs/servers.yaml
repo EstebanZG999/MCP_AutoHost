@@ -25,3 +25,12 @@ servers:
     cwd: "${CHATBOT_SERVER_PATH}"
     env:
       PYTHONUNBUFFERED: "1"
+  remote_echo:
+    command: "ssh"
+    args:
+      - "-T"
+      - "${REMOTE_SSH}"
+      - "/home/estebanzg99/remote-echo-server/.venv/bin/python"
+      - "/home/estebanzg99/remote-echo-server/server.py"
+    env:
+      PYTHONUNBUFFERED: "1"
