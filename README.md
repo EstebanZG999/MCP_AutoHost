@@ -131,7 +131,8 @@ auto_advisor:
 Example usage:
 ```
 /mcp tools auto_advisor
-/mcp call auto_advisor estimate_price {"make":"Toyota","model":"Corolla","year":2019,"mileage":40000}
+/mcp call auto_advisor estimate_price {"Car Make":"Honda","Car Model":"Civic","Year":2020,"Mileage":40000,"Fuel Type":"Gasoline","Transmission":"Automatic","Condition":"Like New","Accident":"No"}
+/mcp call auto_advisor average_price {"Car Make":"BMW","Fuel Type":"Diesel","Year_min":2018}
 ```
 
 ---
