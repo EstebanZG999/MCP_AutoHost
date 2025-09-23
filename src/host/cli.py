@@ -1,8 +1,11 @@
 # Title: MCP_AutoHost CLI (Milestone 2 — async REPL clean)
 import os, sys, json, asyncio
+import mcp
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.json import JSON as RichJSON
+from rich.syntax import Syntax
 from dotenv import load_dotenv
 
 from .memory import Memory
@@ -26,6 +29,49 @@ def print_help():
     tbl.add_row("/mcp demo_repo <dir>", "Create folder + README + initial git commit")
     tbl.add_row("/exit", "Exit")
     console.print(tbl)
+
+def render_mcp_output(out):
+    """
+    Normalize the output of an MCP tools/call to print it nicely.
+    - If out = {"content":[{"type":"text","text":"{...json...}"}]}, try to parse that inner JSON string.
+    - If parsing fails, return it as plain text.
+    - In other cases, assume 'out' is already a dict/JSON object.
+    Returns (kind, payload) where kind ∈ {"json", "text"}.
+    """
+    try:
+        # Typical MCP case: {"content":[{"type":"text","text":"{...}"}]}
+        if isinstance(out, dict) and "content" in out and isinstance(out["content"], list):
+            texts = []
+            for item in out["content"]:
+                if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str):
+                    texts.append(item["text"])
+            joined = "\n".join(texts).strip()
+            if joined:
+                # Try to parse as JSON
+                try:
+                    data = json.loads(joined)
+                    return "json", data
+                except Exception:
+                    # Not valid JSON; return as plain text
+                    return "text", joined
+
+        # If not in the above format, maybe 'out' is already a JSON-like object
+        if isinstance(out, (dict, list)):
+            return "json", out
+
+        # Last resort: if it's a string, try JSON parse; if it fails, return as text
+        if isinstance(out, str):
+            try:
+                data = json.loads(out)
+                return "json", data
+            except Exception:
+                return "text", out
+
+        # Unknown structure: return a string representation
+        return "text", repr(out)
+
+    except Exception as e:
+        return "text", f"[render_mcp_output error] {e}"
 
 async def repl_async():
     console.rule("[bold cyan]MCP_AutoHost")
@@ -108,9 +154,19 @@ async def repl_async():
                                 console.print(f"[red]Invalid JSON args:[/red] {je}")
                                 continue
                             out = await mcp.call_tool(srv, tool, args)
-                            console.print(Panel.fit(json.dumps(out, indent=2),
-                                                    title=f"{srv}:{tool}",
-                                                    border_style="magenta"))
+                            kind, payload = render_mcp_output(out)
+
+                            if kind == "json":
+                                body = RichJSON.from_data(payload, indent=2)
+                            else:
+                                lang = "json"
+                                try:
+                                    json.loads(payload)
+                                except Exception:
+                                    lang = "text"
+                                body = Syntax(payload, lang, word_wrap=True)
+
+                            console.print(Panel(body, title=f"{srv}:{tool}", border_style="magenta"))
 
                     elif sub == "demo_repo":
                         # /mcp demo_repo <dir>
