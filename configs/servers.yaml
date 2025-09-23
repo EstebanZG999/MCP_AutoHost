@@ -29,8 +29,15 @@ servers:
     command: "ssh"
     args:
       - "-T"
+      - "-i"
+      - "${SSH_KEY_PATH}"
+      - "-o"
+      - "BatchMode=yes"
+      - "-o"
+      - "StrictHostKeyChecking=accept-new"
       - "${REMOTE_SSH}"
-      - "/home/estebanzg99/remote-echo-server/.venv/bin/python"
-      - "/home/estebanzg99/remote-echo-server/server.py"
+      - "bash"
+      - "-lc"
+      - "'. ${REMOTE_DIR}/.venv/bin/activate && python ${REMOTE_DIR}/server.py'"
     env:
       PYTHONUNBUFFERED: "1"
