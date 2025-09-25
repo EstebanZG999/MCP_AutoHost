@@ -19,6 +19,7 @@ servers:
     env:
       PYTHONPATH: "${POKEVGC_PATH}"
       PYTHONUNBUFFERED: "1"
+      LOG_LEVEL: "WARNING"
   chatbot_server:
     command: "${CHATBOT_SERVER_PY}"
     args: ["server.py", "stdio"]
@@ -31,10 +32,16 @@ servers:
       - "-T"
       - "-i"
       - "${SSH_KEY_PATH}"
-      - "-o"
+      - "-o" 
       - "BatchMode=yes"
       - "-o"
       - "StrictHostKeyChecking=accept-new"
+      - "-o"
+      - "ConnectTimeout=8"
+      - "-o"
+      - "ServerAliveInterval=10"
+      - "-o"
+      - "ServerAliveCountMax=2"
       - "${REMOTE_SSH}"
       - "bash"
       - "-lc"
