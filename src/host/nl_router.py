@@ -1,5 +1,6 @@
 # src/host/nl_router.py
 from typing import Dict, Any, Tuple, Optional, List
+from .parsers import parse_remote_echo_command, parse_sum_command
 
 class NaturalLanguageOrchestrator:
     def __init__(self, tool_index: Dict[Tuple[str, str], Dict[str, Any]]):
@@ -14,8 +15,8 @@ class NaturalLanguageOrchestrator:
 
     async def basic_fallback(self, llm, user_message: str, memory) -> str:
         """
-        Respuesta genérica cuando no hay herramienta que usar.
-        Usa el historial de 'memory' si existe.
+        Generic response when no tool is available.
+        Uses the 'memory' history if it exists.
         """
         system = (
             "You are a helpful assistant. Answer clearly and concisely. "
@@ -36,16 +37,16 @@ class NaturalLanguageOrchestrator:
 
     async def select_tool_and_args(self, llm, user_message: str, memory) -> Dict[str, Any]:
         """
-        Devuelve: {"tool_ref": "server.tool" | None, "arguments": {...} | {}, "reasoning_summary": "..."}
-        Pide al LLM una propuesta; valida contra tool_index; aplica filtro de intención
-        (filesystem/git) y fallback por keywords si la selección no es apropiada.
+        Returns: {"tool_ref": "server.tool" | None, "arguments": {...} | {}, "reasoning_summary": "..."}
+        Asks the LLM for a proposal; validates against tool_index; applies intention filter
+        (filesystem/git) and fallback by keywords if the selection is inappropriate.
         """
-        # Utilidades locales
+        # Local utilities
         def _mentions_any(text: str, kws: List[str]) -> bool:
             t = (text or "").lower()
             return any(k in t for k in kws)
 
-        # 1) Pide al LLM una selección en JSON
+        # 1) Ask the LLM for a selection in JSON
         system = (
             "You are a router. Pick exactly one available tool and output JSON with keys: "
             "{\"tool_ref\": \"server.tool\" | null, \"arguments\": {..}, \"reasoning_summary\": \"...\"}. "
@@ -65,11 +66,11 @@ class NaturalLanguageOrchestrator:
             json_fallback={"tool_ref": None, "arguments": {}, "reasoning_summary": "No tools available."},
         )
 
-        # 2) Normaliza y valida tool_ref contra el catálogo
+        # 2) Normalize and validate tool_ref against the catalog
         valid_map = {f"{s}.{t}": (s, t) for (s, t) in self.tool_index.keys()}
         pred = (out.get("tool_ref") or "").strip()
 
-        # 3) Filtro por intención (no permitas filesystem/git sin intención clara)
+        # 3) Intent filter (do not allow filesystem/git without clear intent)
         FILE_SERVERS = {"filesystem"}
         GIT_SERVERS  = {"git"}
 
@@ -86,12 +87,12 @@ class NaturalLanguageOrchestrator:
             if (srv in FILE_SERVERS and not file_intent) or (srv in GIT_SERVERS and not git_intent):
                 pred = None
 
-        # 4) Si la elección quedó inválida, aplica fallback heurístico por dominio
+        # 4) If the selection remains invalid, apply fallback heuristic by domain
         if pred not in valid_map:
             text = (user_message or "").lower()
             candidate: Optional[str] = None
 
-            # BMI/BMR / entrenador (chatbot_server.compute_metrics)
+            # BMI/BMR / trainer (chatbot_server.compute_metrics)
             if any(k in text for k in ["bmi", "bmr", "height", "weight", "peso", "altura", "edad", "calories", "metabolism"]):
                 if "chatbot_server.compute_metrics" in valid_map:
                     candidate = "chatbot_server.compute_metrics"
@@ -107,7 +108,7 @@ class NaturalLanguageOrchestrator:
                     elif "pokevgc.pool.filter" in valid_map:
                         candidate = "pokevgc.pool.filter"
 
-            # Autos
+            # Cars
             if candidate is None and any(k in text for k in [
                 "car", "cars", "auto", "coche", "mileage", "diesel", "gasoline", "hybrid",
                 "accident", "price", "budget", "cheap", "expensive", "safest", "seguro"
@@ -126,22 +127,19 @@ class NaturalLanguageOrchestrator:
 
             pred = candidate if (candidate and candidate in valid_map) else None
 
-        # =========================
-        # >>>>>>> PARCHE AQUÍ <<<<<
-        # =========================
-        # Ajustes finos a la selección y a los argumentos antes de devolver.
+        # Fine-tuning the selection and arguments before returning.
         args = out.get("arguments") or {}
         lowered = (user_message or "").lower()
 
-        # 4.a) Si el LLM eligió top_cars pero el usuario dio filtros avanzados,
-        #      forzamos filter_cars y mapeamos argumentos.
+        # 4.a) If the LLM chose top_cars but the user gave advanced filters,
+        #      we force filter_cars and map arguments.
         if pred == "auto_advisor.top_cars":
             wants_accident_free   = any(k in lowered for k in ["accident-free", "no accidents"])
             wants_transmission    = any(k in lowered for k in ["automatic", "manual"])
             wants_fuel           = any(k in lowered for k in ["diesel", "hybrid", "electric", "gasoline", "petrol"])
             wants_year_or_mileage = any(k in lowered for k in ["year", "since", "+", "≤", "<=", "under", "mileage", "km", "miles"])
 
-            # Importa parsers del paquete local
+            # Import parsers from local package
             try:
                 from .parsers import (
                     parse_budget_from_text_strict,
@@ -164,7 +162,7 @@ class NaturalLanguageOrchestrator:
                 if "auto_advisor.filter_cars" in valid_map:
                     pred = "auto_advisor.filter_cars"
 
-                    # Construir args para filter_cars
+                    # Build args for filter_cars
                     limit = args.get("limit") or args.get("n")
                     if not limit and parse_count_from_text:
                         limit = parse_count_from_text(user_message)
@@ -173,25 +171,25 @@ class NaturalLanguageOrchestrator:
 
                     new_args = {"limit": limit}
 
-                    # Precio
+                    # Price
                     if parse_budget_from_text_strict:
                         budget = parse_budget_from_text_strict(user_message)
                         if budget is not None:
                             new_args["Price_max"] = budget
 
-                    # Año
+                    # Year
                     if parse_year_range_from_text:
                         ymin, ymax = parse_year_range_from_text(user_message)
                         if ymin: new_args["Year_min"] = ymin
                         if ymax: new_args["Year_max"] = ymax
 
-                    # Kilometraje
+                    # Mileage
                     if parse_mileage_max_from_text:
                         mmax = parse_mileage_max_from_text(user_message)
                         if mmax is not None:
                             new_args["Mileage_max"] = mmax
 
-                    # Transmisión / Fuel / Accident
+                    # Transmission / Fuel / Accident
                     if "automatic" in lowered: new_args["Transmission"] = "automatic"
                     if "manual" in lowered:    new_args["Transmission"] = "manual"
                     if "diesel" in lowered:    new_args["Fuel Type"] = "diesel"
@@ -202,54 +200,70 @@ class NaturalLanguageOrchestrator:
                     if wants_accident_free:
                         new_args["Accident"] = "No"
 
-                    # Conserva lo ya sugerido si aplica
+                    # Preserve what's already suggested if applicable
                     for k in ("Car Make","Car Model","Transmission","Fuel Type","Condition","Accident","Year_min","Year_max","Mileage_max","Price_max"):
                         if k in args and k not in new_args:
                             new_args[k] = args[k]
 
                     args = new_args
 
-        # 4.b) Si el usuario pidió rutina y falta 'objetivo', infiérelo o usa default.
+        # 4.b) If the user asked for a routine and 'goal' is missing, infer it or use default.
         if pred == "chatbot_server.build_routine_tool":
             params = (args.get("params") or {}).copy()
-            if "objetivo" not in params:
+            if "goal" not in params:
                 try:
                     from .parsers import parse_trainer_generic_from_text
                 except Exception:
                     parse_trainer_generic_from_text = None
-                objetivo = None
+                goal = None
                 if parse_trainer_generic_from_text:
                     g = parse_trainer_generic_from_text(user_message) or {}
-                    objetivo = g.get("objetivo")
-                params["objetivo"] = objetivo or "endurance"
+                    goal = g.get("goal")
+                params["goal"] = goal or "endurance"
             args["params"] = params
 
-        # 4.c) recommend_exercises: si falta objetivo o limite, infiere/default
+        # 4.c) recommend_exercises: if goal or limit is missing, infer/default
         if pred == "chatbot_server.recommend_exercises":
             params = (args.get("params") or {}).copy()
             try:
                 from .parsers import parse_trainer_generic_from_text, parse_count_from_text
                 g = parse_trainer_generic_from_text(user_message) or {}
-                if "objetivo" not in params and g.get("objetivo"):
-                    params["objetivo"] = g["objetivo"]
-                if "limite" not in params:
+                if "goal" not in params and g.get("goal"):
+                    params["goal"] = g["goal"]
+                if "limit" not in params:
                     c = parse_count_from_text(user_message)
                     if c:
-                        params["limite"] = c
+                        params["limit"] = c
             except Exception:
-                if "objetivo" not in params:
-                    params["objetivo"] = "endurance"
+                if "goal" not in params:
+                    params["goal"] = "endurance"
             args["params"] = params
-        # =========================
-        # >>>>> FIN PARCHE <<<<<<<
-        # =========================
 
-        # 5) Retorno final
+        # 5) Final return
         if pred is None:
             return {
                 "tool_ref": None,
                 "arguments": {},
                 "reasoning_summary": out.get("reasoning_summary") or "No tools available.",
+            }
+
+        
+        # 1) Check if the user message matches "hello"
+        echo_result = parse_remote_echo_command(user_message)
+        if echo_result:
+            return {
+                "tool_ref": "remote_echo.echo_tool",  # Esta es la referencia que podrías usar para tu servidor remoto
+                "arguments": echo_result,
+                "reasoning_summary": "Echo command detected (hello)."
+            }
+
+        # 2) Check if the user message is a sum command
+        sum_result = parse_sum_command(user_message)
+        if sum_result:
+            return {
+                "tool_ref": "remote_echo.sum_tool",  # Igual para el comando de suma
+                "arguments": sum_result,
+                "reasoning_summary": "Sum command detected."
             }
 
         return {

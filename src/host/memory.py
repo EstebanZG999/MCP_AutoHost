@@ -47,7 +47,7 @@ class Memory:
             self.messages = head + tail
 
     def history(self):
-        return list(self.messages)  # o como almacenes el historial [{"role":"user","content":...}, ...]
+        return list(self.messages)  # history [{"role":"user","content":...}, ...]
 
     def dump_json(self):
         return json.dumps(self.history(), ensure_ascii=False, indent=2)

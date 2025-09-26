@@ -9,8 +9,8 @@ servers:
     env:
       MCP_LOG_LEVEL: "info"
   auto_advisor:
-    command: "/home/esteb/4to/segundo/redes/MCP_AutoAdvisor_Server/.venv/bin/python"
-    args: ["/home/esteb/4to/segundo/redes/MCP_AutoAdvisor_Server/server.py"]
+    command: "/home/laptopez/4to/segundo/redes/MCP_AutoAdvisor_Server/.venv/bin/python"
+    args: ["/home/laptopez/4to/segundo/redes/MCP_AutoAdvisor_Server/server.py"]
     env: {}
   pokevgc:
     command: "${POKEVGC_PY}"
@@ -45,6 +45,5 @@ servers:
       - "${REMOTE_SSH}"
       - "bash"
       - "-lc"
-      - "'. ${REMOTE_DIR}/.venv/bin/activate && python ${REMOTE_DIR}/server.py'"
     env:
       PYTHONUNBUFFERED: "1"

@@ -12,12 +12,12 @@ START_TIMEOUT = 30
 INIT_TIMEOUT  = 20
 
 def _expand_vars(value: Any, workspace: str) -> Any:
-    """Expande ${VAR} y ${workspace} en strings (recursivo en listas/dicts)."""
+    """Expands ${VAR} and ${workspace} in strings (recursive in lists/dicts)."""
     if isinstance(value, str):
-        # Primero ${workspace}
+        # First ${workspace}
         value = value.replace("${workspace}", workspace)
-        # Luego variables de entorno ${VAR}
-        # Nota: os.path.expandvars usa $VAR, pero acepta ${VAR} también.
+        # Then environment variables ${VAR}
+        # Note: os.path.expandvars uses $VAR but also accepts ${VAR}.
         value = os.path.expandvars(value)
         return value
     if isinstance(value, list):
@@ -39,14 +39,14 @@ class ServerManager:
         self.cfg_raw = servers_cfg
         self.workspace = workspace or os.getcwd()
 
-        # Config expandida
+        # Expanded configuration
         self.cfg: Dict[str, Dict[str, Any]] = {
             name: _expand_vars(conf, self.workspace) for name, conf in servers_cfg.items()
         }
 
-        # Recursos vivos
+        # Active resources
         self.sessions: Dict[str, ClientSession] = {}
-        self._ctxmgrs = {}   # name -> AsyncContextManager de stdio_client
+        self._ctxmgrs = {}   # name -> AsyncContextManager of stdio_client
         self._conns = {}     # name -> (read, write)
 
     async def _start_one(self, name: str, s: Dict[str, Any]):
@@ -70,12 +70,12 @@ class ServerManager:
 
         sess = ClientSession(read, write)
         try:
-            # 👇 IMPORTANTE: entrar al context manager de la sesión
+            # 👇 IMPORTANT: enter the session context manager
             await asyncio.wait_for(sess.__aenter__(), timeout=INIT_TIMEOUT)
             await asyncio.wait_for(sess.initialize(), timeout=INIT_TIMEOUT)
         except Exception as e:
             try:
-                # cierra sesión si abrió
+                # close the session if it was opened
                 try:
                     await sess.__aexit__(None, None, None)
                 except Exception:
@@ -91,7 +91,7 @@ class ServerManager:
 
     async def start_all(self):
         names = list(self.cfg.keys())
-        # ⚠️ filtra servers con comando vacío o no ejecutable
+        # ⚠️ filters servers with empty or non-runnable command
         launch = []
         for n in names:
             cmd = str(self.cfg[n].get("command", "")).strip()
@@ -107,7 +107,7 @@ class ServerManager:
                 print(f"[warn] Server '{n}' did not start: {r}")
 
     async def stop_all(self):
-        # Apaga en orden inverso: shutdown → __aexit__ → cerrar stdio_client
+        # Stops in reverse order: shutdown → __aexit__ → close stdio_client
         for name, sess in list(self.sessions.items()):
             try:
                 await sess.shutdown()
@@ -136,7 +136,7 @@ class ServerManager:
                 for t in tools.tools:
                     idx[(srv, t.name)] = t.inputSchema
             except Exception as e:
-                # Continúa, pero reporta
+                # Continue, but report
                 print(f"[warn] list_tools failed for {srv}: {e}")
         return idx
 

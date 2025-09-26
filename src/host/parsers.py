@@ -1,14 +1,12 @@
-# src/host/parsers.py
-# -*- coding: utf-8 -*-
 """
 Parsers & heuristics for MCP_AutoHost.
 
-Centraliza todo el parsing basado en regex (autos, trainer, Pokémon, utilidades).
-Deja a los módulos de orquestación/CLI el flujo de negocio, mientras que aquí
-se resuelven tareas de extracción desde lenguaje natural.
+Centralizes all parsing based on regex (cars, trainer, Pokémon, utilities).
+Leaves the orchestration/CLI modules to handle the business flow, while here
+tasks related to extraction from natural language are handled.
 
-Funciones principales (agrupadas):
-- Autos:
+Main functions (grouped):
+- Cars:
     - parse_auto_from_text
     - parse_mileage_max_from_text
     - parse_budget_from_text_strict, parse_budget_from_text
@@ -20,17 +18,17 @@ Funciones principales (agrupadas):
     - parse_imperial_metrics
 - Pokémon VGC:
     - parse_poke_constraints_from_text
-- Helpers comunes:
+- Common helpers:
     - _norm_key, _try_float, _parse_gender, _parse_int, _parse_float
 
-Notas de formato/supuestos:
-- El dataset de autos usa **kilómetros** para “Mileage”. Las funciones que
-  devuelven “Mileage_max” devuelven SIEMPRE kilómetros.
-- “budget” / “Price_max” devuelven enteros en USD.
-- Year range devuelve (ymin, ymax) con None cuando no aplica.
-- Las funciones son tolerantes a EN/ES.
+Format notes/assumptions:
+- The car dataset uses **kilometers** for "Mileage". Functions that
+  return "Mileage_max" ALWAYS return kilometers.
+- "budget" / "Price_max" return integers in USD.
+- Year range returns (ymin, ymax) with None when not applicable.
+- The functions are tolerant of EN/ES.
 
-Ejemplos rápidos (doctest-ish):
+Quick examples (doctest-ish):
 >>> parse_year_range_from_text("2016–2020")
 (2016, 2020)
 >>> parse_year_range_from_text("from 2018 to 2022")
@@ -47,7 +45,7 @@ Ejemplos rápidos (doctest-ish):
 15000
 >>> parse_budget_from_text("$12,500")
 12500
->>> parse_trainer_metrics_from_text("male, 5'9\", 172 lb, 28 yo")["altura_cm"] > 170
+>>> parse_trainer_metrics_from_text("male, 5'9\", 172 lb, 28 yo")["height_cm"] > 170
 True
 """
 
@@ -56,13 +54,13 @@ from __future__ import annotations
 import re
 from typing import Optional, Tuple, Dict, Any, List
 
-# ── Constantes comunes ───────────────────────────────────────────────────────────
+# ── Common constants ───────────────────────────────────────────────────────────
 
-_DASH = r"[–-]"            # en dash o hyphen
-_YEAR = r"(?:19|20)\d{2}"  # año completo
+_DASH = r"[–-]"            # en dash or hyphen
+_YEAR = r"(?:19|20)\d{2}"  # full year
 
 __all__ = [
-    # Autos
+    # Cars
     "parse_auto_from_text",
     "parse_mileage_max_from_text",
     "parse_budget_from_text_strict",
@@ -85,10 +83,10 @@ __all__ = [
     "_parse_float",
 ]
 
-# ── Helpers comunes ──────────────────────────────────────────────────────────────
+# ── Common helpers ──────────────────────────────────────────────────────────────
 
 def _norm_key(k: str) -> str:
-    """Normaliza nombres de claves para mapping libre→schema."""
+    """Normalizes key names for free→schema mapping."""
     return k.strip().lower().replace("_", " ")
 
 def _try_float(x) -> Optional[float]:
@@ -124,17 +122,17 @@ def _parse_float(text: str, pat: str) -> Optional[float]:
         return None
 
 
-# ── Autos: presupuesto, kilometraje, años, hints generales ──────────────────────
+# ── Cars: budget, mileage, years, general hints ──────────────────────────────
 
 def parse_budget_from_text_strict(text: str) -> Optional[int]:
     """
-    Extrae budget explícito con referencia a USD/$ para evitar colisión con “mileage”.
-    Acepta “$12,000”, “usd 12k”, “under 15k dollars”, “≤ 15k usd”.
+    Extracts an explicit budget with reference to USD/$ to avoid collision with “mileage”.
+    Accepts “$12,000”, “usd 12k”, “under 15k dollars”, “≤ 15k usd”.
 
-    Retorna:
-        int | None  (en USD)
+    Returns:
+        int | None  (in USD)
 
-    Ejemplos:
+    Examples:
         >>> parse_budget_from_text_strict("under 15k dollars")
         15000
         >>> parse_budget_from_text_strict("$12,500")
@@ -161,14 +159,14 @@ def parse_budget_from_text_strict(text: str) -> Optional[int]:
 
 def parse_budget_from_text(text: str) -> Optional[float]:
     """
-    Extrae una cantidad tipo “$12,000”, “12000”, “10k”, etc. (No exige USD explícito).
-    Útil para detecciones generales, pero puede confundir “mileage” con dinero si
-    no hay contexto.
+    Extracts an amount like “$12,000”, “12000”, “10k”, etc. (Does not require USD explicitly).
+    Useful for general detections, but can confuse “mileage” with money if
+    there's no context.
 
-    Retorna:
-        float | None  (en USD)
+    Returns:
+        float | None  (in USD)
 
-    Ejemplos:
+    Examples:
         >>> parse_budget_from_text("$12,000")
         12000.0
         >>> parse_budget_from_text("budget 8k")
@@ -199,18 +197,18 @@ def parse_count_from_text(text: str):
 
 def parse_year_range_from_text(text: str) -> Tuple[Optional[int], Optional[int]]:
     """
-    Detección robusta de rango de años o límites abiertos.
+    Robust detection of year range or open limits.
 
-    Patrones:
+    Patterns:
         - “2021–2022”, “2016-2020”
         - “from 2016 to 2020”, “between 2016 and 2020”
         - “2020+”, “since 2020”
         - “<= 2020”, “up to 2020”
 
-    Retorna:
-        (ymin, ymax) con None si falta.
+    Returns:
+        (ymin, ymax) with None if missing.
 
-    Ejemplos:
+    Examples:
         >>> parse_year_range_from_text("between 2017 and 2019")
         (2017, 2019)
         >>> parse_year_range_from_text("2018+")
@@ -257,7 +255,7 @@ def parse_year_range_from_text(text: str) -> Tuple[Optional[int], Optional[int]]
 
 def parse_year_min_from_text(text: str) -> Optional[int]:
     """
-    Extrae año mínimo (“from 2018”, “since 2018”, “2018+”, “>= 2018”).
+    Extracts minimum year (“from 2018”, “since 2018”, “2018+”, “>= 2018”).
     """
     if not text:
         return None
@@ -291,7 +289,7 @@ def parse_year_min_from_text(text: str) -> Optional[int]:
         except Exception:
             pass
 
-    # redundante pero tolerante
+    # redundant but tolerant
     m = re.search(r'\b((19|20)\d{2})\s*\+', t)
     if m:
         return int(m.group(1))
@@ -301,7 +299,7 @@ def parse_year_min_from_text(text: str) -> Optional[int]:
 
 def parse_year_max_from_text(text: str) -> Optional[int]:
     """
-    Extrae año máximo (“<= 2018”, “up to 2018”, “until 2018”, “2018 or earlier”).
+    Extracts maximum year (“<= 2018”, “up to 2018”, “until 2018”, “2018 or earlier”).
     """
     if not text:
         return None
@@ -325,17 +323,17 @@ def parse_year_max_from_text(text: str) -> Optional[int]:
 
 def parse_mileage_max_from_text(text: str) -> Optional[int]:
     """
-    Extrae un límite máximo de kilometraje desde texto.
+    Extracts a maximum mileage limit from text.
 
-    Acepta:
+    Accepts:
         - “≤ 80,000 km”, “< 60k km”, “under 60k miles”, “less than 60k mi”
         - “mileage ... under 60k mi”
         - “60k miles max”, “60000 km or less”
-        - “low mileage” → heurística 60,000 km
+        - “low mileage” → heuristic 60,000 km
 
-    DEVUELVE SIEMPRE **KILÓMETROS** (int), porque el dataset está en km.
+    ALWAYS RETURNS **KILOMETERS** (int), as the dataset is in km.
 
-    Ejemplos:
+    Examples:
         >>> parse_mileage_max_from_text("under 60k miles")
         96561
         >>> parse_mileage_max_from_text("≤ 80,000 km")
@@ -363,7 +361,7 @@ def parse_mileage_max_from_text(text: str) -> Optional[int]:
                 raw = nums[0].replace(",", "").strip()
                 val = int(float(raw[:-1]) * 1000) if raw.endswith("k") else int(float(raw))
                 u = unit.group(0)
-                # dataset en km → convertir si la unidad está en millas
+                # dataset in km → convert if unit is in miles
                 if u in ("mile", "miles", "mi"):
                     # 1 mi = 1.60934 km
                     val = int(round(val * 1.60934))
@@ -400,7 +398,7 @@ def parse_auto_from_text(text: str) -> dict:
     if any(w in t for w in ["accident-free", "no accidents", "sin accidentes", "safest", "safety"]):
         out["Accident"] = "No"
 
-    # Body style (guárdalo como hint interno)
+    # Body style (keep as internal hint)
     if any(w in t for w in ["suv", "crossover"]): out["__BODY_STYLE__"] = "SUV"
     elif any(w in t for w in ["truck", "pickup", "pick-up"]): out["__BODY_STYLE__"] = "Truck"
     elif "sedan" in t: out["__BODY_STYLE__"] = "Sedan"
@@ -408,7 +406,7 @@ def parse_auto_from_text(text: str) -> dict:
     elif "wagon" in t: out["__BODY_STYLE__"] = "Wagon"
     elif "van" in t: out["__BODY_STYLE__"] = "Van"
 
-    # ---- Mileage_max (EXIGE unidad o palabra 'mileage/odometer/odo')
+    # ---- Mileage_max (REQUIRES unit or 'mileage/odometer/odo' word)
     unit_pat = r"(?:miles|mi|kms?|km)"
     num_pat  = r"([0-9]{1,3}(?:[,\.\s]\d{3})*|\d+)\s*(k)?"
 
@@ -419,10 +417,10 @@ def parse_auto_from_text(text: str) -> dict:
         val = int(raw) * (1000 if m.group(2) else 1)
         unit = re.search(unit_pat, t[m.start():m.end()]).group(0)
         if unit in ("miles", "mi"):
-            val = int(round(val * 1.60934))  # dataset en km
+            val = int(round(val * 1.60934))  # dataset in km
         out["Mileage_max"] = val
 
-    # ---- Price_max: requiere moneda o la palabra 'budget'
+    # ---- Price_max: requires currency or 'budget' word
     m = (re.search(rf"(?:<=|<|under|less than)\s*(?:\$|\busd\b|\bdollars?\b)\s*{num_pat}\b", t)
          or re.search(rf"\bbudget\b\s*(?:is|=|:)?\s*(?:\$|\busd\b|\bdollars?\b)?\s*{num_pat}\b", t))
     if m:
@@ -433,53 +431,53 @@ def parse_auto_from_text(text: str) -> dict:
 
 
 
-# ── Trainer: métricas y genéricos (objetivo, deporte, etc.) ─────────────────────
+# ── Trainer: metrics and generics (goal, sport, etc.) ─────────────────────
 
 def parse_imperial_metrics(text: str) -> Tuple[Optional[float], Optional[float]]:
     """
-    Convierte métricas en unidades imperiales a métricas SI:
-        - Altura en 5'9" o "5 ft 9 in" → centímetros
-        - Peso en lb/lbs/pounds → kilogramos
+    Converts imperial metrics to SI units:
+        - Height in 5'9" or "5 ft 9 in" → centimeters
+        - Weight in lb/lbs/pounds → kilograms
 
-    Retorna:
-        (altura_cm, peso_kg)  — cada uno puede venir como None
+    Returns:
+        (height_cm, weight_kg)  — each can be None
     """
     if not text:
         return (None, None)
 
     t = text.lower()
-    altura_cm = peso_kg = None
+    height_cm = weight_kg = None
 
-    # Altura 5'9" o 5 ft 9 in
+    # Height 5'9" or 5 ft 9 in
     m = re.search(r'(\d)\'\s*(\d{1,2})\"', t) or re.search(r'(\d)\s*ft\s*(\d{1,2})\s*in', t)
     if m:
         ft, inch = int(m.group(1)), int(m.group(2))
-        altura_cm = round(ft * 30.48 + inch * 2.54, 1)
+        height_cm = round(ft * 30.48 + inch * 2.54, 1)
 
-    # Peso en lb
+    # Weight in lb
     m = re.search(r'\b(\d{2,3})\s*(lb|lbs|pounds?)\b', t)
     if m:
-        peso_kg = round(int(m.group(1)) * 0.453592, 1)
+        weight_kg = round(int(m.group(1)) * 0.453592, 1)
 
-    return altura_cm, peso_kg
+    return height_cm, weight_kg
 
 
 def parse_trainer_metrics_from_text(text: str) -> Dict[str, Any]:
     """
-    Extrae {sexo, edad, altura_cm, peso_kg} desde el mensaje libre (EN/ES).
+    Extracts {gender, age, height_cm, weight_kg} from free message (EN/ES).
 
-    Acepta:
+    Accepts:
         - “male/female/masculino/femenino”
         - “age 28” / “28 years old” / “edad 28” / “28 años”
         - “175 cm” / “altura 175 cm” / “height 175 cm”
         - “78 kg” / “peso 78 kg” / “weight 78 kg”
-        - Métricas imperiales: “5'9"”, “5 ft 9 in”, “172 lb”
+        - Imperial metrics: “5'9"”, “5 ft 9 in”, “172 lb”
 
-    Retorna:
-        dict con cualquiera de las claves detectadas.
+    Returns:
+        dict with any of the detected keys.
 
-    Ejemplo:
-        >>> parse_trainer_metrics_from_text("male, 5'9\", 172 lb, 28 yo")["sexo"]
+    Example:
+        >>> parse_trainer_metrics_from_text("male, 5'9\", 172 lb, 28 yo")["gender"]
         'male'
     """
     out: Dict[str, Any] = {}
@@ -488,68 +486,68 @@ def parse_trainer_metrics_from_text(text: str) -> Dict[str, Any]:
 
     t = text.lower()
 
-    sexo = _parse_gender(t)
-    if sexo:
-        out["sexo"] = sexo
+    gender = _parse_gender(t)
+    if gender:
+        out["gender"] = gender
 
-    # edad
-    edad = (
+    # age
+    age = (
         _parse_int(t, r"\bage\s*[:\-]?\s*(\d{1,3})\b")
         or _parse_int(t, r"\b(\d{1,3})\s*(years|year|yo|años|año)\b")
         or _parse_int(t, r"\bedad\s*[:\-]?\s*(\d{1,3})\b")
     )
-    if edad is not None:
-        out["edad"] = edad
+    if age is not None:
+        out["age"] = age
 
-    # altura (cm)
-    altura_cm = (
+    # height (cm)
+    height_cm = (
         _parse_float(t, r"\bheight\s*[:\-]?\s*(\d{2,3})(?:\.\d+)?\s*cm\b")
         or _parse_float(t, r"\baltura\s*[:\-]?\s*(\d{2,3})(?:\.\d+)?\s*cm\b")
         or _parse_float(t, r"\b(\d{2,3})(?:\.\d+)?\s*cm\b")
     )
 
-    # peso (kg)
-    peso_kg = (
+    # weight (kg)
+    weight_kg = (
         _parse_float(t, r"\bweight\s*[:\-]?\s*(\d{2,3})(?:\.\d+)?\s*kg\b")
         or _parse_float(t, r"\bpeso\s*[:\-]?\s*(\d{2,3})(?:\.\d+)?\s*kg\b")
         or _parse_float(t, r"\b(\d{2,3})(?:\.\d+)?\s*kg\b")
     )
 
-    # si no hay métricas SI, intentamos imperiales
+    # if no SI metrics, try imperial
     imp_h, imp_w = parse_imperial_metrics(text)
-    if altura_cm is None and imp_h is not None:
-        altura_cm = imp_h
-    if peso_kg is None and imp_w is not None:
-        peso_kg = imp_w
+    if height_cm is None and imp_h is not None:
+        height_cm = imp_h
+    if weight_kg is None and imp_w is not None:
+        weight_kg = imp_w
 
-    if altura_cm is not None:
-        out["altura_cm"] = altura_cm
-    if peso_kg is not None:
-        out["peso_kg"] = peso_kg
+    if height_cm is not None:
+        out["height_cm"] = height_cm
+    if weight_kg is not None:
+        out["weight_kg"] = weight_kg
 
     return out
 
 
 import re
-from .parsers import parse_count_from_text  # si este archivo es parsers.py, omite este import circular
+from .parsers import parse_count_from_text  # if this file is parsers.py, omit this circular import
 
 def parse_trainer_generic_from_text(text: str) -> dict:
     t = (text or "").lower()
     out: dict = {}
 
-    # objetivo
+    # goal
     if re.search(r'\b(fat\s*loss|lose\s*fat|weight\s*loss|burn\s*fat|perder\s*grasa|bajar\s*grasa)\b', t):
-        out['objetivo'] = 'fat loss'
+        out['goal'] = 'fat loss'
     elif (re.search(r'\b(gain(?:ing)?|build(?:ing)?|put on|add)\s+(muscle|masa muscular|size)\b', t) or
           re.search(r'\b(hypertrophy|hipertrofia|bulk(?:\s*up)?)\b', t) or
           re.search(r'\b(ganar|aumentar)\s+(m[úu]sculo|masa muscular)\b', t)):
-        out['objetivo'] = 'gain muscle mass'
+        out['goal'] = 'gain muscle mass'
     elif re.search(r'\b(endurance|stamina|resistencia)\b', t):
-        out['objetivo'] = 'endurance'
+        out['goal'] = 'endurance'
     elif re.search(r'\b(strength|fuerza)\b', t):
-        out['objetivo'] = 'strength'
+        out['goal'] = 'strength'
 
-    # deporte (igual que antes)
+    # sport (same as before)
     sport_map = [
         (r'\brunn?ing|correr\b', 'running'),
         (r'\bcalisthenics|calistenia|bodyweight\b', 'calisthenics'),
@@ -562,48 +560,48 @@ def parse_trainer_generic_from_text(text: str) -> dict:
     ]
     for pat, val in sport_map:
         if re.search(pat, t):
-            out['deporte'] = val
+            out['sport'] = val
             break
 
-    # días/semana
+    # days/week
     m = re.search(r'(\d+)\s*(days?|d[ií]as?)\s*(per\s*week|\/\s*week|a\s*la\s*semana|por\s*semana)?', t)
     if m:
-        out['dias_por_semana'] = int(m.group(1))
+        out['days_per_week'] = int(m.group(1))
 
-    # minutos por sesión
+    # minutes per session
     m = re.search(r'(\d+)\s*(min(?:s|utes)?|minutos)\s*(per\s*session|por\s*ses[ií]on)?', t)
     if m:
-        out['minutos_por_sesion'] = int(m.group(1))
+        out['minutes_per_session'] = int(m.group(1))
 
-    # experiencia
+    # experience
     if re.search(r'\b(beginner|novice|principiante|novato)\b', t):
-        out['experiencia'] = 'principiante'
+        out['experience'] = 'beginner'
     elif re.search(r'\b(intermediate|intermedio)\b', t):
-        out['experiencia'] = 'intermedio'
+        out['experience'] = 'intermediate'
     elif re.search(r'\b(advanced|avanzad[oa])\b', t):
-        out['experiencia'] = 'avanzado'
+        out['experience'] = 'advanced'
 
-    # límite (aprovecha sinónimos como “recommendations”)
+    # limit (uses synonyms like “recommendations”)
     m = re.search(r'\b(limit|l[ií]mite|max(?:imo)?)\s*[:=]?\s*(\d{1,2})\b', t)
     if m:
-        out['limite'] = int(m.group(2))
+        out['limit'] = int(m.group(2))
     else:
         cnt = parse_count_from_text(text)
         if cnt:
-            out['limite'] = cnt
+            out['limit'] = cnt
 
-    # sesiones/semana (sinónimos)
+    # sessions/week (synonyms)
     m = re.search(r'(\d{1,2})\s*(sessions?|workouts?|entrenamientos?)\s*(per\s*week|a\s*la\s*semana|por\s*semana)?', t)
     if m:
-        out['dias_por_semana'] = int(m.group(1))
+        out['days_per_week'] = int(m.group(1))
 
     return out
 
 
 
-# ── Pokémon VGC: constraints simples ─────────────────────────────────────────────
+# ── Pokémon VGC: simple constraints ─────────────────────────────────────────────
 
-# ── Pokémon VGC: constraints desde lenguaje natural ─────────────────────────────
+# ── Pokémon VGC: constraints from natural language ─────────────────────────────
 import re
 
 _POKE_TYPES = {
@@ -611,7 +609,7 @@ _POKE_TYPES = {
     "flying","psychic","bug","rock","ghost","dragon","dark","steel","fairy"
 }
 
-# sinónimos/castellano mínimos
+# minimal synonyms/spanish aliases
 _TYPE_ALIASES = {
     "fuego":"fire", "agua":"water", "eléctrico":"electric", "electrico":"electric",
     "planta":"grass", "hielo":"ice", "lucha":"fighting", "veneno":"poison",
@@ -620,11 +618,11 @@ _TYPE_ALIASES = {
     "siniestro":"dark", "acero":"steel", "hada":"fairy", "normal":"normal"
 }
 
-# habilidades que nos interesa capturar (amplía si quieres)
+# abilities we want to capture (expand if needed)
 _ABILITY_ALIASES = {
     "levitate":"Levitate",
     "levitar":"Levitate",
-    # añade si te interesa: "intimidate":"Intimidate", ...
+    # add if needed: "intimidate":"Intimidate", ...
 }
 
 def _find_types(text_lower: str):
@@ -635,13 +633,13 @@ def _find_types(text_lower: str):
         tok = _TYPE_ALIASES.get(tok, tok)
         if tok in _POKE_TYPES:
             found.add(tok)
-    # 2) listado simple: “fire type pokemon”, “show fire and water …”
-    #    Detecta cualquier token de tipos presente
+    # 2) simple list: “fire type pokemon”, “show fire and water …”
+    #    Detects any token of types present
     tokens = re.findall(r'[a-záéíóúüñ\-]+', text_lower)
     for tok in tokens:
         base = _TYPE_ALIASES.get(tok, tok)
         if base in _POKE_TYPES:
-            # Evita falsos positivos obvios (“steel” a veces aparece suelto, pero es aceptable)
+            # Avoid obvious false positives (“steel” sometimes appears alone, but it's acceptable)
             found.add(base)
     return sorted(found)
 
@@ -650,7 +648,7 @@ def _find_required_abilities(text_lower: str):
     for key, canon in _ABILITY_ALIASES.items():
         if re.search(r'\b' + re.escape(key) + r'\b', text_lower):
             req.append(canon)
-    # patrones “with Levitate”, “con Levitate”
+    # patterns “with Levitate”, “con Levitate”
     m = re.search(r'\b(?:with|con)\s+([A-Za-z][A-Za-z \-]+)\b', text_lower)
     if m:
         cand = m.group(1).strip().lower()
@@ -695,3 +693,15 @@ def parse_poke_constraints_from_text(text: str) -> dict:
         out["require_abilities"] = req_abilities
 
     return out
+
+
+def parse_remote_echo_command(user_msg: str):
+    if "hello" in user_msg.lower():
+        return {"params": {"text": "hello?"}}
+    return {}
+
+def parse_sum_command(user_msg: str):
+    numbers = re.findall(r'\d+', user_msg)
+    if len(numbers) == 2:
+        return {"params": {"a": int(numbers[0]), "b": int(numbers[1])}}
+    return {}

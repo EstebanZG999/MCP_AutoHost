@@ -1,4 +1,3 @@
-# Title: MCP_AutoHost CLI (Milestone 2 — async REPL clean)
 import os, sys, json, asyncio
 import re
 from rich.console import Console
@@ -15,9 +14,9 @@ from .nl_router import NaturalLanguageOrchestrator
 
 import yaml
 
-# 👇 Todos los parsers centralizados en src/host/parsers.py
+# 👇 All parsers centralized in src/host/parsers.py
 from .parsers import (
-    # autos
+    # cars
     parse_year_range_from_text,
     parse_mileage_max_from_text,
     parse_budget_from_text_strict,
@@ -53,14 +52,14 @@ def print_help():
     console.print(tbl)
 
 def _safe_panel_text(x: str) -> str:
-    """Asegura que lo que mandamos al Panel sea str y no None."""
+    """Ensures that what we send to the Panel is str and not None."""
     return x if isinstance(x, str) else str(x)
 
-# 1) Conversión y columnas de millas/km
+# 1) Conversion and miles/km columns
 def _rows_with_units(rows, user_msg: str):
     import re
     t = (user_msg or "").lower()
-    # usa límites de palabra para no confundir "mi" con "mini"
+    # use word boundaries to avoid confusing "mi" with "mini"
     wants_miles = bool(re.search(r"\bmi\b|\bmiles?\b", t))
     out = []
     for r in rows:
@@ -73,11 +72,11 @@ def _rows_with_units(rows, user_msg: str):
         out.append(r2)
     return out
 
-# 2) Construcción de tabla: llama a _rows_with_units y fija un orden de columnas
+# 2) Table construction: calls _rows_with_units and sets column order
 def _build_preview_table_from_json(obj, user_msg: str = "", max_rows: int = 3) -> Table | None:
     """
-    Si el output del MCP tiene una lista de resultados (e.g., 'recommendations' o 'results'),
-    construye una tabla bonita con hasta max_rows filas.
+    If the MCP output has a list of results (e.g., 'recommendations' or 'results'),
+    it builds a nice table with up to max_rows rows.
     """
     if not isinstance(obj, dict):
         return None
@@ -91,18 +90,18 @@ def _build_preview_table_from_json(obj, user_msg: str = "", max_rows: int = 3) -
     if not rows or not isinstance(rows, list):
         return None
 
-    # <-- AQUI integras las unidades
+    # <-- HERE integrate units
     rows = _rows_with_units(rows, user_msg)
 
-    # Orden “preferido” para autos; lo que no esté aquí va al final
+    # Preferred order for cars; anything not here goes at the end
     preferred = [
         "Car Make","Car Model","Year","Mileage (km)","Mileage (mi)",
         "Price","Fuel Type","Transmission","Condition","Accident","Color"
     ]
 
-    # Descubre columnas presentes respetando el orden preferido
+    # Discover present columns while respecting the preferred order
     cols = [c for c in preferred if any(isinstance(r, dict) and c in r for r in rows)]
-    # Añade cualquier otra columna que aparezca
+    # Add any other columns that appear
     for item in rows[:max_rows]:
         if isinstance(item, dict):
             for k in item.keys():
@@ -116,7 +115,7 @@ def _build_preview_table_from_json(obj, user_msg: str = "", max_rows: int = 3) -
     for c in cols:
         tbl.add_column(str(c))
 
-    # Formateo leve para no mostrar floats feos en Price
+    # Light formatting to avoid showing ugly floats in Price
     def _fmt(c, v):
         if c == "Price" and isinstance(v, (int, float)):
             return f"{v:,.2f}"
@@ -133,8 +132,8 @@ def _build_preview_table_from_json(obj, user_msg: str = "", max_rows: int = 3) -
 
 def _should_apply_trainer_packing(server_name: str, tool_name: str, schema: dict) -> bool:
     """
-    Heurística: aplicar force_trainer_params si parece tool de entrenamiento
-    por nombre del servidor/tool o porque el schema tiene 'params' con señales de trainer.
+    Heuristic: apply force_trainer_params if the tool seems to be a training tool
+    based on the server/tool name or because the schema has 'params' with trainer-like signals.
     """
     srv = (server_name or "").lower()
     tl  = (tool_name or "").lower()
@@ -150,7 +149,7 @@ def _should_apply_trainer_packing(server_name: str, tool_name: str, schema: dict
     if "params" in props and isinstance(props["params"], dict):
         pprops = props["params"].get("properties")
         if isinstance(pprops, dict):
-            trainerish = {"sexo","edad","altura_cm","peso_kg","objetivo","deporte","limite","dias_por_semana","minutos_por_sesion","experiencia"}
+            trainerish = {"gender","age","height_cm","weight_kg","goal","sport","limit","days_per_week","minutes_per_session","experience"}
             if any(k in pprops for k in trainerish):
                 return True
 
@@ -161,54 +160,54 @@ def _should_apply_trainer_packing(server_name: str, tool_name: str, schema: dict
     return False
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Argument normalizer (no es parser — usa parsers para inferir valores)
+# Argument normalizer (not a parser — uses parsers to infer values)
 # ────────────────────────────────────────────────────────────────────────────────
 
 def force_trainer_params(user_msg: str, args: dict, schema: dict) -> dict:
     """
-    Adaptativo para tools de entrenamiento:
-    - Si el schema declara 'params', empaqueta en {"params": {...}}
-    - Si NO declara 'params', coloca los campos en la RAÍZ
-    - Infere métricas y genéricos desde texto (ES/EN)
-    - Normaliza limit/limite según lo que declare el schema
-    - Solo filtra por params_schema si NO está vacío
+    Adaptive for training tools:
+    - If the schema declares 'params', it packs them into {"params": {...}}
+    - If it does NOT declare 'params', it places the fields at the ROOT level
+    - Infers metrics and generics from text (ES/EN)
+    - Normalizes limit/limite according to what the schema declares
+    - Filters only by params_schema if it is NOT empty
     """
     args = (args or {}).copy()
     props = (schema or {}).get("properties") or {}
     has_params_prop = "params" in props and isinstance(props["params"], dict)
     params_schema = props["params"].get("properties") if has_params_prop else None
 
-    # Infere desde texto
-    metrics = parse_trainer_metrics_from_text(user_msg)   # sexo, edad, altura_cm, peso_kg
-    generic = parse_trainer_generic_from_text(user_msg)   # objetivo, deporte, limite, dias_..., minutos_..., experiencia
+    # Infers from text
+    metrics = parse_trainer_metrics_from_text(user_msg)   # gender, age, height_cm, weight_kg
+    generic = parse_trainer_generic_from_text(user_msg)   # goal, sport, limit, days_..., minutes_..., experience
 
-    # Helper normalizador de enteros
+    # Helper to normalize integers
     def _to_int(v):
         try: return int(v)
         except: return None
 
     if has_params_prop:
-        # ----- VÍA CON PARAMS -----
+        # ----- WITH PARAMS ----- 
         params = dict(args.get("params") or {})
 
-        # Migra sueltos → params (incluye limit/limite si vinieron sueltos)
-        for k in ("sexo", "edad", "altura_cm", "peso_kg",
-                  "objetivo", "deporte", "dias_por_semana", "minutos_por_sesion", "experiencia",
-                  "limite", "limit"):
+        # Migrate loose ones → params (includes limit/limite if they came loose)
+        for k in ("gender", "age", "height_cm", "weight_kg",
+                  "goal", "sport", "days_per_week", "minutes_per_session", "experience",
+                  "limit", "limit"):
             if k in args and k not in params:
                 params[k] = args.pop(k)
 
-        # Rellena faltantes
+        # Fill in missing
         for k, v in {**metrics, **generic}.items():
             params.setdefault(k, v)
 
-        # Normaliza limit→limite dentro de params si aplica
-        if "limite" not in params and "limit" in params:
-            v = _to_int(params.pop("limit"))
+        # Normalize limit→limite inside params if applicable
+        if "limit" not in params and "limite" in params:
+            v = _to_int(params.pop("limite"))
             if v is not None:
-                params["limite"] = v
+                params["limit"] = v
 
-        # Filtra solo si params_schema es dict NO vacío
+        # Filter only if params_schema is a non-empty dict
         if isinstance(params_schema, dict) and len(params_schema) > 0:
             params = {k: v for k, v in params.items() if k in params_schema}
 
@@ -216,20 +215,20 @@ def force_trainer_params(user_msg: str, args: dict, schema: dict) -> dict:
         return args
 
     else:
-        # ----- VÍA SIN PARAMS (root-level) -----
+        # ----- WITHOUT PARAMS (root-level) ----- 
         out = args.copy()
 
-        # Rellena root con inferencias
+        # Fill root with inferences
         for k, v in {**metrics, **generic}.items():
             out.setdefault(k, v)
 
-        # Normaliza limite→limit si el schema declara 'limit' (inglés) y NO declara 'limite'
+        # Normalize limit→limite if the schema declares 'limit' (English) and does NOT declare 'limite'
         if "limit" in props and "limite" not in props and "limit" not in out and "limite" in out:
             v = _to_int(out.pop("limite"))
             if v is not None:
                 out["limit"] = v
 
-        # Si el schema declara 'limite' pero no 'limit', haz la conversión inversa
+        # If the schema declares 'limite' but not 'limit', do the reverse conversion
         if "limite" in props and "limit" in out and "limite" not in out:
             v = _to_int(out.pop("limit"))
             if v is not None:
@@ -248,8 +247,8 @@ def _needs_auto_filters(user_msg: str) -> bool:
 
 def _force_auto_filter_cars_if_needed(user_msg: str, tool_ref: str, args: dict) -> tuple[str, dict]:
     """
-    Si el LLM eligió top_cars pero hay filtros → cámbialo a filter_cars.
-    Conserva args útiles (p. ej. Transmission) y añade limit si venía "top N".
+    If the LLM chose top_cars but there are filters → change it to filter_cars.
+    Keep useful args (e.g., Transmission) and add limit if "top N" was given.
     """
     if tool_ref == "auto_advisor top_cars" and _needs_auto_filters(user_msg):
         tool_ref = "auto_advisor filter_cars"
@@ -262,14 +261,14 @@ def _force_auto_filter_cars_if_needed(user_msg: str, tool_ref: str, args: dict) 
 
 def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
     """
-    - Mapea aliases a nombres del schema.
-    - Si el schema contiene un objeto 'params', empaqueta claves ahí.
-    - Infere budget/limit/year según el texto (usando parsers).
-    - Heurísticas para AutoAdvisor (fuel/transmission/condition/accident/price_max).
-    - Heurísticas para PokeVGC (format/playstyle/constraints.strategy.trick_room).
-    - Convierte team (lista) a {"pokemon":[{"name":...}]} si aplica.
-    - Fallback para 'trainer': empaqueta 'params' si es requerido.
-    - Filtra propiedades no permitidas al final.
+    - Maps aliases to schema names.
+    - If the schema contains a 'params' object, it packs keys there.
+    - Infers budget/limit/year from text (using parsers).
+    - Heuristics for AutoAdvisor (fuel/transmission/condition/accident/price_max).
+    - Heuristics for PokeVGC (format/playstyle/constraints.strategy.trick_room).
+    - Converts team (list) to {"pokemon":[{"name":...}]} if applicable.
+    - Fallback for 'trainer': packs 'params' if required.
+    - Filters out properties that are not allowed at the end.
     """
     args = args or {}
     if not isinstance(schema, dict):
@@ -284,7 +283,7 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
 
     canon_by_norm = {_norm_key(k): k for k in props.keys()}
     aliases = {
-        # autos
+        # cars
         "make": "Car Make", "brand": "Car Make", "car make": "Car Make",
         "model": "Car Model", "car model": "Car Model",
         "year": "Year", "min year": "Year_min", "year min": "Year_min",
@@ -298,11 +297,11 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
         "sort": "sort_order", "sort order": "sort_order",
         "budget": "budget_max", "max budget": "budget_max",
         # trainer
-        "sexo": "sexo", "edad": "edad", "altura cm": "altura_cm", "peso kg": "peso_kg",
-        "objetivo": "objetivo", "deporte": "deporte",
-        "dias por semana": "dias_por_semana",
-        "minutos por sesion": "minutos_por_sesion",
-        "experiencia": "experiencia",
+        "gender": "gender", "age": "age", "height cm": "height_cm", "weight kg": "weight_kg",
+        "goal": "goal", "sport": "sport",
+        "days per week": "days_per_week",
+        "minutes per session": "minutes_per_session",
+        "experience": "experience",
         "params": "params",
         # pokevgc
         "format": "format", "playstyle": "playstyle", "constraints": "constraints",
@@ -310,14 +309,14 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
         "min speed": "min_speed",
     }
 
-    # subschema de params si existe
+    # params schema if it exists
     params_schema = None
     if "params" in props and isinstance(props["params"], dict):
         params_schema = props["params"].get("properties") or {}
 
     out: dict = {}
 
-    # 1) Mapear args → claves del schema (root o params)
+    # 1) Map args → schema keys (root or params)
     for k, v in args.items():
         nk = _norm_key(k)
         target = aliases.get(nk) or canon_by_norm.get(nk)
@@ -341,7 +340,7 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
         elif params_schema and target in params_schema:
             out.setdefault("params", {})[target] = v
 
-    # 2) Si existe params_schema y hay claves sueltas que pertenecen a params → empaquetar
+    # 2) If params_schema exists and there are loose keys that belong to params → pack them
     if params_schema:
         keys_for_params = [k for k in list(out.keys()) if k in params_schema and k != "params"]
         if keys_for_params:
@@ -361,7 +360,7 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
         if mmax is not None:
             out["Mileage_max"] = mmax
 
-    # 3.c) Year_min / Year_max por rango / plus
+    # 3.c) Year_min / Year_max by range / plus
     ymin, ymax = parse_year_range_from_text(user_msg)
     if "Year_min" in props and "Year_min" not in out:
         ysolo = parse_year_min_from_text(user_msg)
@@ -372,12 +371,12 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
         if ysolo:
             out["Year_max"] = ysolo
 
-    # Normalizar “petrol” → “Gasoline”
+    # Normalize “petrol” → “Gasoline”
     if "Fuel Type" in out and isinstance(out["Fuel Type"], str):
         if out["Fuel Type"].lower() == "petrol":
             out["Fuel Type"] = "Gasoline"
 
-    # Aplicar auto_hints SIEMPRE (no depender de Fuel Type)
+    # Apply auto_hints ALWAYS (don't rely on Fuel Type)
     if "Price_max" in props and "Price_max" not in out:
         b = parse_budget_from_text_strict(user_msg)
         if b is not None:
@@ -391,13 +390,13 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
         if k in props and k not in out and k in auto_hints:
             out[k] = auto_hints[k]
 
-    # 5) Fallback especial trainer: empaquetar params si hace falta
+    # 5) Special trainer fallback: pack params if needed
     params_required = "params" in req
-    if (params_required or any(k in args for k in ("sexo","edad","altura_cm","peso_kg"))) \
+    if (params_required or any(k in args for k in ("gender","age","height_cm","weight_kg"))) \
        and ("params" not in out) and params_schema:
         candidate = {}
-        for k in ("sexo", "edad", "altura_cm", "peso_kg", "objetivo", "deporte",
-                  "dias_por_semana", "minutos_por_sesion", "experiencia", "limite", "limit"):
+        for k in ("gender", "age", "height_cm", "weight_kg", "goal", "sport",
+                  "days_per_week", "minutes_per_session", "experience", "limit", "limit"):
             if k in args and k in params_schema:
                 candidate[k] = args[k]
         for k in list(out.keys()):
@@ -406,13 +405,13 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
         if candidate:
             out["params"] = candidate
 
-    # 6) Heurística PokeVGC
+    # 6) PokeVGC heuristics
     t = (user_msg or "").lower()
     no_tr = re.search(r'\b(no|without|avoid|sin)\s+trick\s*room\b', t)
 
     if "playstyle" in props:
         if no_tr:
-            pass  # NO establecer trick_room
+            pass  # DO NOT set trick_room
         elif re.search(r'\btrick\s*room\b', t):
             out["playstyle"] = "trick_room"
 
@@ -433,7 +432,7 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
             elif out.get("playstyle") == "trick_room":
                 cs.setdefault("strategy", {})["trick_room"] = True
 
-    # team.synergy → objeto esperado
+    # team.synergy → expected object
     if "team" in props and isinstance(out.get("team"), list):
         out["team"] = {"pokemon": [{"name": n} if isinstance(n, str) else n for n in out["team"]]}
 
@@ -443,7 +442,7 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
         for k, v in hints.items():
             cs.setdefault(k, v)
 
-    # 7) Filtrado final (root y params)
+    # 7) Final filtering (root and params)
     out = {k: v for k, v in out.items() if (k in props) or (k == "params" and params_schema)}
     if "params" in out and params_schema:
         out["params"] = {k: v for k, v in out["params"].items() if k in params_schema}
@@ -458,11 +457,11 @@ def conform_args_to_schema(user_msg: str, args: dict, schema: dict) -> dict:
     return out
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Resumenes cortos de outputs (UI)
+# Short summaries of outputs (UI)
 # ────────────────────────────────────────────────────────────────────────────────
 
 def summarize_tool_output(parsed, user_msg: str, server: str, tool: str, args: dict) -> str:
-    """Resumen determinista (1–2 frases) SOLO con la info del output de la tool."""
+    """Deterministic summary (1–2 sentences) ONLY from the tool output."""
     # 1) auto_advisor.average_price
     if isinstance(parsed, dict) and "average_price" in parsed:
         avg = parsed.get("average_price")
@@ -542,7 +541,7 @@ def summarize_tool_output(parsed, user_msg: str, server: str, tool: str, args: d
         if names:
             return f"Suggested team: {', '.join(names)}."
 
-    # algunos endpoints del poke builder devuelven directamente una lista
+    # some poke builder endpoints return a list directly
     if isinstance(parsed, list) and parsed:
         def name_of(x):
             if isinstance(x, dict):
@@ -551,15 +550,15 @@ def summarize_tool_output(parsed, user_msg: str, server: str, tool: str, args: d
         labels = [str(name_of(it)) for it in parsed[:3]]
         return f"Top matches include {', '.join(labels)}. Showing {min(3,len(parsed))} of {len(parsed)}."
 
-    # 5) texto plano
+    # 5) plain text
     if isinstance(parsed, str) and parsed.strip():
         return parsed.strip()
 
-    # 6) último recurso
+    # 6) last resort
     return f"Here is the result from {server}.{tool}."
 
 # ────────────────────────────────────────────────────────────────────────────────
-# REPL principal
+# Main REPL
 # ────────────────────────────────────────────────────────────────────────────────
 
 async def repl_async():
@@ -574,7 +573,7 @@ async def repl_async():
     mem = Memory(max_messages=20)
     client = LLMClient()
 
-    # 🔧 Levantar TODOS los servidores MCP y construir el catálogo de herramientas
+    # 🔧 Start ALL MCP servers and build the tools catalog
     cfg = yaml.safe_load(open(CONFIG_FILE, "r", encoding="utf-8"))
     sm = ServerManager(cfg["servers"], workspace=os.getcwd())
     await sm.start_all()
@@ -628,7 +627,7 @@ async def repl_async():
 
             # ================== NL → (server.tool + args) → JSON ==================
             selection = await orchestrator.select_tool_and_args(client, user, mem)
-            tool_ref = selection.get("tool_ref")             # "server.tool" o None
+            tool_ref = selection.get("tool_ref")             # "server.tool" or None
             tool_args = selection.get("arguments", {}) or {}
             reasoning = selection.get("reasoning_summary", "")
 
@@ -650,29 +649,29 @@ async def repl_async():
                     console.print(Panel(_safe_panel_text(body), title="Result", border_style="red"))
                 else:
                     try:
-                        # 1) Normaliza args contra el schema de la tool (alias, year_min, budget, count, etc.)
+                        # 1) Normalize args against the schema of the tool (alias, year_min, budget, count, etc.)
                         schema = tool_index.get((server_name, tool_name), {}) or {}
                         norm_args = conform_args_to_schema(user, tool_args, schema)
 
                         if _should_apply_trainer_packing(server_name, tool_name, schema):
                             norm_args = force_trainer_params(user, norm_args, schema)
 
-                        print("DEBUG tool_ref:", server_name, tool_name)
-                        print("DEBUG required:", schema.get("required"))
-                        print("DEBUG props:", list((schema.get("properties") or {}).keys()))
-                        print("DEBUG norm_args:", json.dumps(norm_args, ensure_ascii=False))
+                        #print("DEBUG tool_ref:", server_name, tool_name)
+                        #print("DEBUG required:", schema.get("required"))
+                        #print("DEBUG props:", list((schema.get("properties") or {}).keys()))
+                        #print("DEBUG norm_args:", json.dumps(norm_args, ensure_ascii=False))
 
-                        # 3) Fallback defensivo: si el schema requiere 'params' y aún no está,
-                        #    y además la tool DECLARA la propiedad 'params', fuerza empaquetado.
+                        # 3) Defensive fallback: if the schema requires 'params' and it is not yet
+                        #    and the tool DECLARES the 'params' property, force packing.
                         req = schema.get("required") or []
                         has_params_prop = isinstance(schema.get("properties"), dict) and "params" in schema["properties"]
                         if ("params" in req) and has_params_prop and ("params" not in norm_args):
                             norm_args = force_trainer_params(user, norm_args, schema)
 
-                        # 4) Llama a la tool
+                        # 4) Call the tool
                         tool_output_text = await sm.call_tool(server_name, tool_name, norm_args)
 
-                        # 5) Intenta parsear JSON (si no, deja texto crudo)
+                        # 5) Try to parse JSON (if not, leave raw text)
                         parsed = None
                         try:
                             parsed = json.loads(tool_output_text)
@@ -680,20 +679,20 @@ async def repl_async():
                         except Exception:
                             pretty = tool_output_text
 
-                        # 6) Resumen determinista SOLO desde el JSON/texto de la tool
+                        # 6) Deterministic summary ONLY from the tool's JSON/text output
                         summary = summarize_tool_output(parsed if parsed is not None else tool_output_text,
                                                         user, server_name, tool_name, norm_args)
 
-                        # 7) Muestra párrafo
+                        # 7) Show paragraph
                         console.print(Panel.fit(_safe_panel_text(summary), title="Assistant", border_style="blue"))
 
-                        # 8) (Opcional) preview en tabla si hay lista
+                        # 8) (Optional) preview in table if there is a list
                         if isinstance(parsed, dict):
                             preview_tbl = _build_preview_table_from_json(parsed, user_msg=user, max_rows=3)
                             if preview_tbl is not None:
                                 console.print(preview_tbl)
-                                
-                        # 9) JSON / texto crudo completo
+                                 
+                        # 9) Full JSON / raw text
                         console.print(Panel(_safe_panel_text(pretty), title="Result", border_style="magenta"))
 
                     except Exception as e:
@@ -707,7 +706,7 @@ async def repl_async():
                         body = json.dumps(debug_payload, ensure_ascii=False, indent=2)
                         console.print(Panel(_safe_panel_text(body), title="Result", border_style="red"))
             else:
-                # 🔹 Fallback: SOLO texto bonito (sin JSON)
+                # 🔹 Fallback: ONLY nice text (no JSON)
                 fallback = await orchestrator.basic_fallback(client, user, mem)
                 mem.add_user(user)
                 mem.add_assistant(fallback)
