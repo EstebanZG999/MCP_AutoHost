@@ -103,14 +103,14 @@ Example log entries:
 ## Filesystem + Git Demo
 Inside REPL, run:
 ```
-/mcp tools filesystem
-/mcp tools git
+tools filesystem
+tools git
 
-/mcp call git init {}
-/mcp call filesystem writeFile {"path":"README.md","content":"# Demo Repo\nCreado vía MCP"}
-/mcp call git add {"path":"README.md"}
-/mcp call git commit {"message":"Primer commit vía MCP"}
-/mcp call filesystem listDirectory {"path":"."}
+git init {}
+filesystem writeFile {"path":"README.md","content":"# Demo Repo\nCreado vía MCP"}
+git add {"path":"README.md"}
+git commit {"message":"Primer commit vía MCP"}
+filesystem listDirectory {"path":"."}
 ```
 
 Expected result: `README.md` file created, added, and committed. Logs are recorded in `logs/host.jsonl`.
@@ -130,9 +130,9 @@ auto_advisor:
 
 Example usage:
 ```
-/mcp tools auto_advisor
-/mcp call auto_advisor estimate_price {"Car Make":"Honda","Car Model":"Civic","Year":2020,"Mileage":40000,"Fuel Type":"Gasoline","Transmission":"Automatic","Condition":"Like New","Accident":"No"}
-/mcp call auto_advisor average_price {"Car Make":"BMW","Fuel Type":"Diesel","Year_min":2018}
+Recommend honda cars with low mileage
+What are the best value cars for my money if im in a 10,000 budget
+Average price  of BMW 3 series 2018 and newer. 
 ```
 
 ---
@@ -154,13 +154,12 @@ peer_text_utils:
   env: {}
 ```
 
-Usage in REPL:
 ```
-/mcp tools peer_math_tools
-/mcp call peer_math_tools factorial {"n":6}
+Pokebuilder: 
+Recommend a balanced team with trickroom
 
-/mcp tools peer_text_utils
-/mcp call peer_text_utils wordCount {"text":"Hello MCP world"}
+Trainer: 
+Calculate my BMI if im 175 cm tall, 28 years old, 78 kg, and a male. 
 ```
 
 ---
@@ -177,11 +176,11 @@ remote_echo:
   env: {}
 ```
 
-Usage in REPL:
 ```
-/mcp tools remote_echo
-/mcp call remote_echo echo {"text":"ping desde host"}
-/mcp call remote_echo sum {"a":7,"b":35}
+remote_echo
+remote_echo HELLO
+sum 9 10 
+result = 19
 ```
 
 Expected log entries:
@@ -212,6 +211,9 @@ MCP_AutoHost/
         ├── cli.py
         ├── llm_client.py
         ├── memory.py
+        ├── nl_router.py
+        ├── parsers.py
+        ├── server_manager.py
         ├── mcp_client.py
         └── logging_utils.py
 ```
