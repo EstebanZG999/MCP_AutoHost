@@ -27,26 +27,6 @@ Format notes/assumptions:
 - "budget" / "Price_max" return integers in USD.
 - Year range returns (ymin, ymax) with None when not applicable.
 - The functions are tolerant of EN/ES.
-
-Quick examples (doctest-ish):
->>> parse_year_range_from_text("2016–2020")
-(2016, 2020)
->>> parse_year_range_from_text("from 2018 to 2022")
-(2018, 2022)
->>> parse_year_min_from_text("2019+")
-2019
->>> parse_year_max_from_text("<= 2020")
-2020
->>> parse_mileage_max_from_text("under 60k miles")
-96561
->>> parse_mileage_max_from_text("≤ 80,000 km")
-80000
->>> parse_budget_from_text_strict("under 15k dollars")
-15000
->>> parse_budget_from_text("$12,500")
-12500
->>> parse_trainer_metrics_from_text("male, 5'9\", 172 lb, 28 yo")["height_cm"] > 170
-True
 """
 
 from __future__ import annotations
@@ -372,9 +352,6 @@ def parse_mileage_max_from_text(text: str) -> Optional[int]:
 
     return None
 
-
-import re
-
 def parse_auto_from_text(text: str) -> dict:
     t = (text or "").lower()
     out = {}
@@ -528,9 +505,6 @@ def parse_trainer_metrics_from_text(text: str) -> Dict[str, Any]:
     return out
 
 
-import re
-from .parsers import parse_count_from_text  # if this file is parsers.py, omit this circular import
-
 def parse_trainer_generic_from_text(text: str) -> dict:
     t = (text or "").lower()
     out: dict = {}
@@ -598,9 +572,6 @@ def parse_trainer_generic_from_text(text: str) -> dict:
     return out
 
 
-
-# ── Pokémon VGC: simple constraints ─────────────────────────────────────────────
-
 # ── Pokémon VGC: constraints from natural language ─────────────────────────────
 import re
 
@@ -627,13 +598,13 @@ _ABILITY_ALIASES = {
 
 def _find_types(text_lower: str):
     found = set()
-    # 1) “fire type”, “tipo fuego”, “type: fire”
+    # “fire type”, “tipo fuego”, “type: fire”
     for m in re.finditer(r'(?:type\s*[:=]?\s*|tipo\s+)([a-záéíóúüñ\-]+)', text_lower):
         tok = m.group(1).strip()
         tok = _TYPE_ALIASES.get(tok, tok)
         if tok in _POKE_TYPES:
             found.add(tok)
-    # 2) simple list: “fire type pokemon”, “show fire and water …”
+    # simple list: “fire type pokemon”, “show fire and water …”
     #    Detects any token of types present
     tokens = re.findall(r'[a-záéíóúüñ\-]+', text_lower)
     for tok in tokens:

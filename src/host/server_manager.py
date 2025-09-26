@@ -91,7 +91,7 @@ class ServerManager:
 
     async def start_all(self):
         names = list(self.cfg.keys())
-        # ⚠️ filters servers with empty or non-runnable command
+        # filters servers with empty or non-runnable command
         launch = []
         for n in names:
             cmd = str(self.cfg[n].get("command", "")).strip()

@@ -46,7 +46,7 @@ class NaturalLanguageOrchestrator:
             t = (text or "").lower()
             return any(k in t for k in kws)
 
-        # 1) Ask the LLM for a selection in JSON
+        # Ask the LLM for a selection in JSON
         system = (
             "You are a router. Pick exactly one available tool and output JSON with keys: "
             "{\"tool_ref\": \"server.tool\" | null, \"arguments\": {..}, \"reasoning_summary\": \"...\"}. "
@@ -66,11 +66,11 @@ class NaturalLanguageOrchestrator:
             json_fallback={"tool_ref": None, "arguments": {}, "reasoning_summary": "No tools available."},
         )
 
-        # 2) Normalize and validate tool_ref against the catalog
+        # Normalize and validate tool_ref against the catalog
         valid_map = {f"{s}.{t}": (s, t) for (s, t) in self.tool_index.keys()}
         pred = (out.get("tool_ref") or "").strip()
 
-        # 3) Intent filter (do not allow filesystem/git without clear intent)
+        # Intent filter (do not allow filesystem/git without clear intent)
         FILE_SERVERS = {"filesystem"}
         GIT_SERVERS  = {"git"}
 
@@ -87,7 +87,7 @@ class NaturalLanguageOrchestrator:
             if (srv in FILE_SERVERS and not file_intent) or (srv in GIT_SERVERS and not git_intent):
                 pred = None
 
-        # 4) If the selection remains invalid, apply fallback heuristic by domain
+        # If the selection remains invalid, apply fallback heuristic by domain
         if pred not in valid_map:
             text = (user_message or "").lower()
             candidate: Optional[str] = None
@@ -131,8 +131,7 @@ class NaturalLanguageOrchestrator:
         args = out.get("arguments") or {}
         lowered = (user_message or "").lower()
 
-        # 4.a) If the LLM chose top_cars but the user gave advanced filters,
-        #      we force filter_cars and map arguments.
+        # If the LLM chose top_cars but the user gave advanced filters,
         if pred == "auto_advisor.top_cars":
             wants_accident_free   = any(k in lowered for k in ["accident-free", "no accidents"])
             wants_transmission    = any(k in lowered for k in ["automatic", "manual"])
@@ -207,7 +206,7 @@ class NaturalLanguageOrchestrator:
 
                     args = new_args
 
-        # 4.b) If the user asked for a routine and 'goal' is missing, infer it or use default.
+        # If the user asked for a routine and 'goal' is missing, infer it or use default.
         if pred == "chatbot_server.build_routine_tool":
             params = (args.get("params") or {}).copy()
             if "goal" not in params:
@@ -222,7 +221,7 @@ class NaturalLanguageOrchestrator:
                 params["goal"] = goal or "endurance"
             args["params"] = params
 
-        # 4.c) recommend_exercises: if goal or limit is missing, infer/default
+        # recommend_exercises: if goal or limit is missing, infer/default
         if pred == "chatbot_server.recommend_exercises":
             params = (args.get("params") or {}).copy()
             try:
@@ -239,7 +238,7 @@ class NaturalLanguageOrchestrator:
                     params["goal"] = "endurance"
             args["params"] = params
 
-        # 5) Final return
+        # Final return
         if pred is None:
             return {
                 "tool_ref": None,
@@ -248,7 +247,7 @@ class NaturalLanguageOrchestrator:
             }
 
         
-        # 1) Check if the user message matches "hello"
+        # Check if the user message matches "hello"
         echo_result = parse_remote_echo_command(user_message)
         if echo_result:
             return {
@@ -257,7 +256,7 @@ class NaturalLanguageOrchestrator:
                 "reasoning_summary": "Echo command detected (hello)."
             }
 
-        # 2) Check if the user message is a sum command
+        # Check if the user message is a sum command
         sum_result = parse_sum_command(user_message)
         if sum_result:
             return {
