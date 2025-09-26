@@ -1,6 +1,7 @@
 # MCP_AutoHost - in-memory conversation buffer
 from __future__ import annotations
 from dataclasses import dataclass, field
+import json
 
 @dataclass
 class Message:
@@ -44,3 +45,9 @@ class Memory:
             head = self.messages[0:1]
             tail = self.messages[-self.max_messages:]
             self.messages = head + tail
+
+    def history(self):
+        return list(self.messages)  # history [{"role":"user","content":...}, ...]
+
+    def dump_json(self):
+        return json.dumps(self.history(), ensure_ascii=False, indent=2)
